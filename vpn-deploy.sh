@@ -115,8 +115,17 @@ ok "Система обновлена."
 CURRENT_KERNEL=$(uname -r)
 INSTALLED_KERNEL=$(dpkg -l | grep -oP 'linux-image-\K[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic' | sort -V | tail -n1)
 if [[ "$CURRENT_KERNEL" != "$INSTALLED_KERNEL" ]]; then
+    echo -e "\n${YELLOW}==================================================${NC}"
     warn "Сервер загружен в старое ядро ($CURRENT_KERNEL), а установлено новое ($INSTALLED_KERNEL)."
-    warn "Перезагрузи сервер и запусти скрипт снова — он продолжит с этого места."
+    echo -e "${YELLOW}==================================================${NC}"
+    echo -e "${CYAN}Что делать:${NC}"
+    echo -e "  1. Перезагрузи сервер:"
+    echo -e "     ${GREEN}reboot${NC}"
+    echo -e "  2. После перезагрузки зайди снова (порт пока 22):"
+    echo -e "     ${GREEN}ssh root@$(hostname -I | awk '{print $1}')${NC}"
+    echo -e "  3. Запусти скрипт снова (он продолжит с этого места):"
+    echo -e "     ${GREEN}bash <(curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh)${NC}"
+    echo -e "${YELLOW}==================================================${NC}"
     exit 1
 fi
 
@@ -212,12 +221,17 @@ if ! systemctl is-active --quiet awg-quick@awg0; then
     chmod +x /tmp/install_amneziawg.sh
     info "Запуск установщика AmneziaWG (интерактивно)..."
     bash /tmp/install_amneziawg.sh --port="$AWG_PORT" --subnet="10.9.9.1/24" --route-amnezia --yes || {
-        warn "AmneziaWG запросил перезагрузку."
-        warn "Перезагрузи сервер: sudo reboot"
-        warn "После перезагрузки зайди под $NEW_USER:"
-        warn "ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')"
-        warn "И запусти скрипт снова:"
-        warn "sudo bash <(curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh)"
+        echo -e "\n${YELLOW}==================================================${NC}"
+        warn "AmneziaWG установлен, но требует перезагрузку."
+        echo -e "${YELLOW}==================================================${NC}"
+        echo -e "${CYAN}Что делать:${NC}"
+        echo -e "  1. Перезагрузи сервер:"
+        echo -e "     ${GREEN}reboot${NC}"
+        echo -e "  2. После перезагрузки зайди под ${CYAN}$NEW_USER${NC} (порт ${CYAN}$SSH_PORT${NC}):"
+        echo -e "     ${GREEN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
+        echo -e "  3. Запусти скрипт снова через sudo (он продолжит с этого места):"
+        echo -e "     ${GREEN}sudo bash <(curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh)${NC}"
+        echo -e "${YELLOW}==================================================${NC}"
         exit 0
     }
     ok "AmneziaWG установлен."
