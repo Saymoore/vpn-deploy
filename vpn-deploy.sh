@@ -91,7 +91,8 @@ echo -e "${MAGENTA}==================================================${NC}"
 # ================= 1. ПОЛЬЗОВАТЕЛЬ =================
 step "1. Пользователь"
 if ! id "$NEW_USER" &>/dev/null; then
-    run adduser --gecos "" "$NEW_USER"
+    # adduser всегда виден (интерактивный)
+    adduser --gecos "" "$NEW_USER"
     run usermod -aG sudo "$NEW_USER"
     ok "Пользователь $NEW_USER создан."
 else
