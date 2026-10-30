@@ -16,6 +16,32 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 err()   { echo -e "${RED}[ERROR]${NC} $1"; }
 step()  { echo -e "\n${CYAN}=== $1 ===${NC}"; }
 
+# ================= РЕЖИМ ВЫВОДА =================
+echo -e "${CYAN}Выберите режим вывода:${NC}"
+echo -e "  1) Краткий (только ключевые сообщения)"
+echo -e "  2) Полный (весь вывод команд, для отладки)"
+read -rp "Ваш выбор [1]: " OUTPUT_MODE
+OUTPUT_MODE=${OUTPUT_MODE:-1}
+
+if [[ "$OUTPUT_MODE" == "2" ]]; then
+    VERBOSE=true
+    info "Включён полный режим вывода."
+else
+    VERBOSE=false
+    info "Включён краткий режим вывода."
+fi
+
+run() {
+    if [[ "$VERBOSE" == "true" ]]; then
+        "$@"
+    else
+        "$@" >/dev/null 2>&1 || {
+            err "Команда завершилась с ошибкой: $*"
+            "$@" 2>&1 | tail -20
+        }
+    fi
+}
+
 CONF="/etc/deploy-vpn.conf"
 
 # ================= НАСТРОЙКИ =================
@@ -65,8 +91,8 @@ echo -e "${MAGENTA}==================================================${NC}"
 # ================= 1. ПОЛЬЗОВАТЕЛЬ =================
 step "1. Пользователь"
 if ! id "$NEW_USER" &>/dev/null; then
-    adduser --gecos "" "$NEW_USER"
-    usermod -aG sudo "$NEW_USER"
+    run adduser --gecos "" "$NEW_USER"
+    run usermod -aG sudo "$NEW_USER"
     ok "Пользователь $NEW_USER создан."
 else
     info "Пользователь $NEW_USER уже существует."
@@ -76,8 +102,8 @@ fi
 step "2. Базовая система"
 export DEBIAN_FRONTEND=noninteractive
 info "Обновление пакетов (может занять время)..."
-apt update
-apt install -y gpg acl curl wget
+run apt update
+run apt install -y gpg acl curl wget
 ok "Базовые пакеты установлены."
 
 info "Настройка IPv6 и форвардинга..."
@@ -85,14 +111,17 @@ grep -q "net.ipv6.conf.all.disable_ipv6" /etc/sysctl.conf || echo "net.ipv6.conf
 grep -q "net.ipv6.conf.default.disable_ipv6" /etc/sysctl.conf || echo "net.ipv6.conf.default.disable_ipv6 = 1" >> /etc/sysctl.conf
 grep -q "net.ipv6.conf.lo.disable_ipv6" /etc/sysctl.conf || echo "net.ipv6.conf.lo.disable_ipv6 = 1" >> /etc/sysctl.conf
 grep -q "net.ipv4.ip_forward" /etc/sysctl.conf || echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-sysctl -p
+sysctl -p >/dev/null 2>&1
 
 info "Создание swap (1G)..."
 if [ ! -f /swapfile ]; then
-    fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+    run fallocate -l 1G /swapfile
+    run chmod 600 /swapfile
+    run mkswap /swapfile
+    run swapon /swapfile
     grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
     grep -q 'vm.swappiness=10' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
-    sysctl -p
+    sysctl -p >/dev/null 2>&1
     ok "Swap создан."
 else
     info "Swap уже существует."
@@ -102,14 +131,14 @@ info "Отключение systemd-resolved..."
 if [ -L /etc/resolv.conf ]; then
     rm /etc/resolv.conf
     printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
-    systemctl disable --now systemd-resolved 2>/dev/null || true
-    systemctl mask systemd-resolved 2>/dev/null || true
+    run systemctl disable --now systemd-resolved
+    run systemctl mask systemd-resolved
     ok "DNS настроен."
 fi
 
 info "Обновление системы (может занять время)..."
-apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade
-apt install -y linux-generic
+run apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade
+run apt install -y linux-generic
 ok "Система обновлена."
 
 CURRENT_KERNEL=$(uname -r)
@@ -120,11 +149,12 @@ if [[ "$CURRENT_KERNEL" != "$INSTALLED_KERNEL" ]]; then
     echo -e "${YELLOW}==================================================${NC}"
     echo -e "${CYAN}Что делать:${NC}"
     echo -e "  1. Перезагрузи сервер:"
-    echo -e "     ${GREEN}reboot${NC}"
+    echo -e "     ${GREEN}sudo reboot${NC}"
     echo -e "  2. После перезагрузки зайди снова (порт пока 22):"
     echo -e "     ${GREEN}ssh root@$(hostname -I | awk '{print $1}')${NC}"
-    echo -e "  3. Запусти скрипт снова (он продолжит с этого места):"
-    echo -e "     ${GREEN}bash <(curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh)${NC}"
+    echo -e "  3. Скачай скрипт и запусти снова:"
+    echo -e "     ${GREEN}curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/deploy-vpn.sh${NC}"
+    echo -e "     ${GREEN}sudo bash /tmp/deploy-vpn.sh${NC}"
     echo -e "${YELLOW}==================================================${NC}"
     exit 1
 fi
@@ -132,13 +162,13 @@ fi
 info "Удаление старых ядер..."
 for old_kernel in $(dpkg -l | grep -oP 'linux-image-\K[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic' | sort -u); do
     if [[ "$old_kernel" != "$CURRENT_KERNEL" ]]; then
-        apt purge -y linux-image-$old_kernel linux-headers-$old_kernel linux-modules-$old_kernel 2>/dev/null || true
+        run apt purge -y linux-image-$old_kernel linux-headers-$old_kernel linux-modules-$old_kernel
     fi
 done
-apt autoremove -y
+run apt autoremove -y
 
-echo 'kernel.unprivileged_userns_clone = 0' | tee /etc/sysctl.d/99-userns.conf
-sysctl -w kernel.unprivileged_userns_clone=0
+echo 'kernel.unprivileged_userns_clone = 0' | tee /etc/sysctl.d/99-userns.conf >/dev/null
+sysctl -w kernel.unprivileged_userns_clone=0 >/dev/null
 ok "Базовая система готова."
 
 # ================= 3. SSH =================
@@ -148,15 +178,15 @@ sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
 sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
 sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication yes/" /etc/ssh/sshd_config
 sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" /etc/ssh/sshd_config
-systemctl disable --now ssh.socket 2>/dev/null || true
-systemctl enable --now ssh.service
-systemctl restart ssh
+run systemctl disable --now ssh.socket
+run systemctl enable --now ssh.service
+run systemctl restart ssh
 ok "SSH настроен."
 
 # ================= 4. FAIL2BAN =================
 step "4. Fail2Ban"
 info "Установка Fail2Ban..."
-apt install -y fail2ban
+run apt install -y fail2ban
 sed -i 's|fail2ban-client flushlogs 1>/dev/null|fail2ban-client flushlogs 1>/dev/null \|\| true|' /etc/logrotate.d/fail2ban 2>/dev/null || true
 
 IGNORE_IP="127.0.0.1/8"
@@ -173,7 +203,7 @@ ignoreip = $IGNORE_IP
 enabled = true
 port = $SSH_PORT
 EOF
-systemctl restart fail2ban
+run systemctl restart fail2ban
 sleep 1
 fail2ban-client status sshd && ok "Fail2Ban настроен." || warn "Fail2Ban не запустился."
 
@@ -181,14 +211,14 @@ fail2ban-client status sshd && ok "Fail2Ban настроен." || warn "Fail2Ban
 step "5. NAT для VPN"
 info "Добавление NAT-правила..."
 iptables -t nat -A POSTROUTING -s 10.9.9.0/24 -o "$NET_IFACE" -j MASQUERADE
-apt install -y iptables-persistent <<< "yes
+run apt install -y iptables-persistent <<< "yes
 yes"
 ok "NAT настроен."
 
 # ================= 6. LOGROTATE =================
 step "6. Logrotate"
 info "Настройка Logrotate..."
-apt install -y logrotate
+run apt install -y logrotate
 cat > /etc/logrotate.d/rsyslog <<EOF
 /var/log/syslog
 /var/log/mail.log
@@ -217,24 +247,30 @@ ok "Logrotate настроен."
 step "7. AmneziaWG"
 if ! systemctl is-active --quiet awg-quick@awg0; then
     info "Скачивание установщика AmneziaWG..."
-    wget -qO /tmp/install_amneziawg.sh https://github.com/bivlked/amneziawg-installer/releases/latest/download/install_amneziawg.sh
+    run wget -qO /tmp/install_amneziawg.sh https://github.com/bivlked/amneziawg-installer/releases/latest/download/install_amneziawg.sh
     chmod +x /tmp/install_amneziawg.sh
-    info "Запуск установщика AmneziaWG (интерактивно)..."
-    bash /tmp/install_amneziawg.sh --port="$AWG_PORT" --subnet="10.9.9.1/24" --route-amnezia --yes || {
+    info "Запуск установщика AmneziaWG..."
+    info "ВАЖНО: когда установщик спросит 'Перезагрузить сейчас? [y/N]', ответь N (нет)."
+    info "Скрипт покажет, что делать дальше."
+    bash /tmp/install_amneziawg.sh --port="$AWG_PORT" --subnet="10.9.9.1/24" --route-amnezia || true
+
+    if systemctl is-active --quiet awg-quick@awg0; then
+        ok "AmneziaWG установлен и работает."
+    else
         echo -e "\n${YELLOW}==================================================${NC}"
         warn "AmneziaWG установлен, но требует перезагрузку."
         echo -e "${YELLOW}==================================================${NC}"
         echo -e "${CYAN}Что делать:${NC}"
         echo -e "  1. Перезагрузи сервер:"
-        echo -e "     ${GREEN}reboot${NC}"
+        echo -e "     ${GREEN}sudo reboot${NC}"
         echo -e "  2. После перезагрузки зайди под ${CYAN}$NEW_USER${NC} (порт ${CYAN}$SSH_PORT${NC}):"
         echo -e "     ${GREEN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
-        echo -e "  3. Запусти скрипт снова через sudo (он продолжит с этого места):"
-        echo -e "     ${GREEN}sudo bash <(curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh)${NC}"
+        echo -e "  3. Скачай скрипт и запусти снова:"
+        echo -e "     ${GREEN}curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/deploy-vpn.sh${NC}"
+        echo -e "     ${GREEN}sudo bash /tmp/deploy-vpn.sh${NC}"
         echo -e "${YELLOW}==================================================${NC}"
         exit 0
-    }
-    ok "AmneziaWG установлен."
+    fi
 else
     info "AmneziaWG уже установлен."
 fi
@@ -247,7 +283,7 @@ if ! command -v awgram &> /dev/null; then
 fi
 
 info "Останавливаем сервис для выдачи прав..."
-systemctl stop awgram 2>/dev/null || true
+run systemctl stop awgram
 
 info "Выдаём права awgram на /root/awg..."
 setfacl -m u:awgram:x /root 2>/dev/null || true
@@ -262,7 +298,7 @@ if ! sudo -u awgram ls /root/awg/manage_amneziawg.sh &>/dev/null; then
 fi
 
 info "Запускаем awgram..."
-systemctl start awgram 2>/dev/null || true
+run systemctl start awgram
 sleep 2
 if systemctl is-active --quiet awgram; then
     ok "awgram запущен."
@@ -281,7 +317,7 @@ ok "Cron настроен."
 step "10. WhiteVPN"
 if [ ! -d /opt/block-traffic ]; then
     info "Установка WhiteVPN (без бота)..."
-    curl -fsSL https://raw.githubusercontent.com/anten-ka/whitevpn/main/install.sh -o /tmp/whitevpn-install.sh
+    run curl -fsSL https://raw.githubusercontent.com/anten-ka/whitevpn/main/install.sh -o /tmp/whitevpn-install.sh
     bash /tmp/whitevpn-install.sh <<< "n"
     ok "WhiteVPN установлен."
 else
@@ -300,6 +336,10 @@ iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || warn "NAT не най�
 echo -e "\n${GREEN}==================================================${NC}"
 echo -e "${GREEN}   ✅ РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!                    ${NC}"
 echo -e "${GREEN}==================================================${NC}"
-echo -e "Заходи под ${CYAN}$NEW_USER${NC} по паролю на порт ${CYAN}$SSH_PORT${NC}."
-echo -e "Root по SSH отключён."
+echo -e "Сервер готов к работе."
+echo -e ""
+echo -e "Для входа по SSH используй:"
+echo -e "  ${CYAN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
+echo -e ""
+echo -e "Root по SSH отключён (безопасность)."
 echo -e "${GREEN}==================================================${NC}"
