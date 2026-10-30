@@ -42,17 +42,6 @@ EOF
     echo "Настройки сохранены в $CONF"
 fi
 
-# Токен: из файла или спросить
-if [[ -f "$TOKEN_FILE" ]]; then
-    BOT_TOKEN=$(cat "$TOKEN_FILE")
-    echo "Токен загружен из $TOKEN_FILE"
-else
-    while true; do
-        read -rp "Введите токен Telegram-бота (от @BotFather): " BOT_TOKEN
-        if [[ -n "$BOT_TOKEN" ]]; then break; else echo "Ошибка: токен не может быть пустым."; fi
-    done
-fi
-
 NET_IFACE=$(ip -4 route show default | awk '{print $5}' | head -n1)
 if [[ -z "$NET_IFACE" ]]; then
     read -rp "Не удалось определить сетевой интерфейс. Введите вручную (например, eth0): " NET_IFACE
@@ -193,35 +182,66 @@ if ! systemctl is-active --quiet awg-quick@awg0; then
     }
 fi
 
-# ================= 8. AWGRAM =================
-echo "=== 8. awgram ==="
+# ================= 8. ПРАВА ДЛЯ AWGRAM (ДО УСТАНОВКИ) =================
+echo "=== 8. Права для awgram ==="
+if id awgram &>/dev/null; then
+    echo "Пользователь awgram уже существует."
+else
+    echo "Пользователь awgram ещё не создан (будет создан при установке)."
+fi
+# Даём права на случай, если awgram уже установлен
+setfacl -m u:awgram:x /root 2>/dev/null || true
+setfacl -m u:awgram:x /root/awg 2>/dev/null || true
+setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh 2>/dev/null || true
+
+# ================= 9. AWGRAM =================
+echo "=== 9. awgram ==="
 if ! command -v awgram &> /dev/null; then
-    curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh \
-      | bash -s -- install --lang ru --mode hardened --token "$BOT_TOKEN" --admins "$ADMIN_ID" || {
-        echo "Установщик awgram запросил данные. Введите их вручную:"
-        curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh | bash
-      }
+    # Токен нужен только если бот ещё не установлен
+    if [[ -f "$TOKEN_FILE" ]]; then
+        BOT_TOKEN=$(cat "$TOKEN_FILE")
+        echo "Токен загружен из $TOKEN_FILE"
+    else
+        while true; do
+            read -rp "Введите токен Telegram-бота (от @BotFather): " BOT_TOKEN
+            if [[ -n "$BOT_TOKEN" ]]; then break; else echo "Ошибка: токен не может быть пустым."; fi
+        done
+    fi
     echo "$BOT_TOKEN" > "$TOKEN_FILE"
     chmod 600 "$TOKEN_FILE"
+
+    # Установщик awgram интерактивный — передаём токен через stdin
+    echo "Устанавливаем awgram (токен будет использован автоматически)..."
+    printf "1\n2\n%s\n%s\n\n" "$BOT_TOKEN" "$ADMIN_ID" | curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh | bash || {
+        echo "Установщик awgram запросил данные. Введите их вручную:"
+        curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh | bash
+    }
+else
+    echo "awgram уже установлен."
 fi
 
-echo "=== 9. Права для awgram ==="
-setfacl -m u:awgram:x /root
-setfacl -m u:awgram:x /root/awg
-setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
+# После установки awgram создаём пользователя (если его ещё нет) и выдаём права
+if id awgram &>/dev/null; then
+    setfacl -m u:awgram:x /root
+    setfacl -m u:awgram:x /root/awg
+    setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
+fi
+
+# ================= 10. CRON ДЛЯ ACL =================
+echo "=== 10. Cron для ACL ==="
 echo "*/1 * * * * root bash -c 'for f in /root/awg/*.conf /root/awg/*.png /root/awg/*.vpnuri; do setfacl -m u:awgram:rx \"\$f\" 2>/dev/null; done'" > /etc/cron.d/awgram-acl
 bash -c 'for f in /root/awg/*.conf /root/awg/*.png /root/awg/*.vpnuri; do setfacl -m u:awgram:rx "$f"; done' 2>/dev/null || true
-systemctl restart awgram
+systemctl restart awgram 2>/dev/null || true
 
-# ================= 10. WHITEVPN =================
-echo "=== 10. WhiteVPN (без бота) ==="
+# ================= 11. WHITEVPN =================
+echo "=== 11. WhiteVPN (без бота) ==="
 if [ ! -d /opt/block-traffic ]; then
     curl -fsSL https://raw.githubusercontent.com/anten-ka/whitevpn/main/install.sh -o /tmp/whitevpn-install.sh
     bash /tmp/whitevpn-install.sh <<< "n"
 fi
 
-# ================= 11. ПРОВЕРКА =================
-echo "=== 11. Проверка ==="
+# ================= 12. ПРОВЕРКА =================
+echo "=== 12. Проверка ==="
 systemctl status awg-quick@awg0 --no-pager | head -5
 systemctl status awgram --no-pager | head -5
 iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || echo "NAT не найден!"
