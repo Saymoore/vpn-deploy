@@ -43,6 +43,7 @@ run() {
 }
 
 CONF="/etc/deploy-vpn.conf"
+RUN_CMD="curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/d.sh && sudo bash /tmp/d.sh"
 
 # ================= НАСТРОЙКИ =================
 if [[ -f "$CONF" ]]; then
@@ -91,7 +92,6 @@ echo -e "${MAGENTA}==================================================${NC}"
 # ================= 1. ПОЛЬЗОВАТЕЛЬ =================
 step "1. Пользователь"
 if ! id "$NEW_USER" &>/dev/null; then
-    # adduser всегда виден (интерактивный)
     adduser --gecos "" "$NEW_USER"
     run usermod -aG sudo "$NEW_USER"
     ok "Пользователь $NEW_USER создан."
@@ -153,9 +153,8 @@ if [[ "$CURRENT_KERNEL" != "$INSTALLED_KERNEL" ]]; then
     echo -e "     ${GREEN}sudo reboot${NC}"
     echo -e "  2. После перезагрузки зайди снова (порт пока 22):"
     echo -e "     ${GREEN}ssh root@$(hostname -I | awk '{print $1}')${NC}"
-    echo -e "  3. Скачай скрипт и запусти снова:"
-    echo -e "     ${GREEN}curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/deploy-vpn.sh${NC}"
-    echo -e "     ${GREEN}sudo bash /tmp/deploy-vpn.sh${NC}"
+    echo -e "  3. Запусти скрипт снова:"
+    echo -e "     ${GREEN}$RUN_CMD${NC}"
     echo -e "${YELLOW}==================================================${NC}"
     exit 1
 fi
@@ -266,9 +265,8 @@ if ! systemctl is-active --quiet awg-quick@awg0; then
         echo -e "     ${GREEN}sudo reboot${NC}"
         echo -e "  2. После перезагрузки зайди под ${CYAN}$NEW_USER${NC} (порт ${CYAN}$SSH_PORT${NC}):"
         echo -e "     ${GREEN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
-        echo -e "  3. Скачай скрипт и запусти снова:"
-        echo -e "     ${GREEN}curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/deploy-vpn.sh${NC}"
-        echo -e "     ${GREEN}sudo bash /tmp/deploy-vpn.sh${NC}"
+        echo -e "  3. Запусти скрипт снова:"
+        echo -e "     ${GREEN}$RUN_CMD${NC}"
         echo -e "${YELLOW}==================================================${NC}"
         exit 0
     fi
