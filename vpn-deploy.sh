@@ -76,7 +76,8 @@ fi
 step "2. Базовая система"
 export DEBIAN_FRONTEND=noninteractive
 info "Обновление пакетов (может занять время)..."
-apt update -qq && apt install -y -qq gpg acl curl wget >/dev/null 2>&1
+apt update
+apt install -y gpg acl curl wget
 ok "Базовые пакеты установлены."
 
 info "Настройка IPv6 и форвардинга..."
@@ -84,14 +85,14 @@ grep -q "net.ipv6.conf.all.disable_ipv6" /etc/sysctl.conf || echo "net.ipv6.conf
 grep -q "net.ipv6.conf.default.disable_ipv6" /etc/sysctl.conf || echo "net.ipv6.conf.default.disable_ipv6 = 1" >> /etc/sysctl.conf
 grep -q "net.ipv6.conf.lo.disable_ipv6" /etc/sysctl.conf || echo "net.ipv6.conf.lo.disable_ipv6 = 1" >> /etc/sysctl.conf
 grep -q "net.ipv4.ip_forward" /etc/sysctl.conf || echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-sysctl -p >/dev/null 2>&1
+sysctl -p
 
 info "Создание swap (1G)..."
 if [ ! -f /swapfile ]; then
-    fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+    fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
     grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
     grep -q 'vm.swappiness=10' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
-    sysctl -p >/dev/null 2>&1
+    sysctl -p
     ok "Swap создан."
 else
     info "Swap уже существует."
@@ -107,8 +108,8 @@ if [ -L /etc/resolv.conf ]; then
 fi
 
 info "Обновление системы (может занять время)..."
-apt-get -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade >/dev/null 2>&1
-apt install -y -qq linux-generic >/dev/null 2>&1
+apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade
+apt install -y linux-generic
 ok "Система обновлена."
 
 CURRENT_KERNEL=$(uname -r)
@@ -122,13 +123,13 @@ fi
 info "Удаление старых ядер..."
 for old_kernel in $(dpkg -l | grep -oP 'linux-image-\K[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic' | sort -u); do
     if [[ "$old_kernel" != "$CURRENT_KERNEL" ]]; then
-        apt purge -y -qq linux-image-$old_kernel linux-headers-$old_kernel linux-modules-$old_kernel >/dev/null 2>&1 || true
+        apt purge -y linux-image-$old_kernel linux-headers-$old_kernel linux-modules-$old_kernel 2>/dev/null || true
     fi
 done
-apt autoremove -y -qq >/dev/null 2>&1
+apt autoremove -y
 
-echo 'kernel.unprivileged_userns_clone = 0' | tee /etc/sysctl.d/99-userns.conf >/dev/null
-sysctl -w kernel.unprivileged_userns_clone=0 >/dev/null
+echo 'kernel.unprivileged_userns_clone = 0' | tee /etc/sysctl.d/99-userns.conf
+sysctl -w kernel.unprivileged_userns_clone=0
 ok "Базовая система готова."
 
 # ================= 3. SSH =================
@@ -139,14 +140,14 @@ sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
 sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication yes/" /etc/ssh/sshd_config
 sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" /etc/ssh/sshd_config
 systemctl disable --now ssh.socket 2>/dev/null || true
-systemctl enable --now ssh.service >/dev/null 2>&1
+systemctl enable --now ssh.service
 systemctl restart ssh
 ok "SSH настроен."
 
 # ================= 4. FAIL2BAN =================
 step "4. Fail2Ban"
 info "Установка Fail2Ban..."
-apt install -y -qq fail2ban >/dev/null 2>&1
+apt install -y fail2ban
 sed -i 's|fail2ban-client flushlogs 1>/dev/null|fail2ban-client flushlogs 1>/dev/null \|\| true|' /etc/logrotate.d/fail2ban 2>/dev/null || true
 
 IGNORE_IP="127.0.0.1/8"
@@ -165,20 +166,20 @@ port = $SSH_PORT
 EOF
 systemctl restart fail2ban
 sleep 1
-fail2ban-client status sshd >/dev/null 2>&1 && ok "Fail2Ban настроен." || warn "Fail2Ban не запустился."
+fail2ban-client status sshd && ok "Fail2Ban настроен." || warn "Fail2Ban не запустился."
 
 # ================= 5. NAT =================
 step "5. NAT для VPN"
 info "Добавление NAT-правила..."
 iptables -t nat -A POSTROUTING -s 10.9.9.0/24 -o "$NET_IFACE" -j MASQUERADE
-apt install -y -qq iptables-persistent >/dev/null 2>&1 <<< "yes
+apt install -y iptables-persistent <<< "yes
 yes"
 ok "NAT настроен."
 
 # ================= 6. LOGROTATE =================
 step "6. Logrotate"
 info "Настройка Logrotate..."
-apt install -y -qq logrotate >/dev/null 2>&1
+apt install -y logrotate
 cat > /etc/logrotate.d/rsyslog <<EOF
 /var/log/syslog
 /var/log/mail.log
@@ -267,7 +268,7 @@ step "10. WhiteVPN"
 if [ ! -d /opt/block-traffic ]; then
     info "Установка WhiteVPN (без бота)..."
     curl -fsSL https://raw.githubusercontent.com/anten-ka/whitevpn/main/install.sh -o /tmp/whitevpn-install.sh
-    bash /tmp/whitevpn-install.sh <<< "n" >/dev/null 2>&1
+    bash /tmp/whitevpn-install.sh <<< "n"
     ok "WhiteVPN установлен."
 else
     info "WhiteVPN уже установлен."
