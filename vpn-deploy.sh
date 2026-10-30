@@ -183,19 +183,24 @@ if ! command -v awgram &> /dev/null; then
     echo "Устанавливаем awgram (интерактивно: язык, режим, токен, ID, путь)..."
     curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh | bash
 
-    # После установки awgram пользователь уже создан — выдаём права
+    # Останавливаем сервис, чтобы выдать права, и только потом запускаем
+    echo "Останавливаем awgram для выдачи прав..."
+    systemctl stop awgram 2>/dev/null || true
+
     echo "Выдаём права awgram на /root/awg..."
     setfacl -m u:awgram:x /root
     setfacl -m u:awgram:x /root/awg
     setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
 
-    # Перезапускаем бота с правами
-    systemctl restart awgram
+    echo "Запускаем awgram..."
+    systemctl start awgram
 else
-    echo "awgram уже установлен — пропускаю."
+    echo "awgram уже установлен — выдаём права и перезапускаем."
+    systemctl stop awgram 2>/dev/null || true
     setfacl -m u:awgram:x /root
     setfacl -m u:awgram:x /root/awg
     setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
+    systemctl start awgram
 fi
 
 # ================= 9. CRON ДЛЯ ACL =================
