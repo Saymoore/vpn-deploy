@@ -182,26 +182,30 @@ echo "=== 8. awgram ==="
 if ! command -v awgram &> /dev/null; then
     echo "Устанавливаем awgram (интерактивно: язык, режим, токен, ID, путь)..."
     curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh | bash
-
-    # Останавливаем сервис, чтобы выдать права, и только потом запускаем
-    echo "Останавливаем awgram для выдачи прав..."
-    systemctl stop awgram 2>/dev/null || true
-
-    echo "Выдаём права awgram на /root/awg..."
-    setfacl -m u:awgram:x /root
-    setfacl -m u:awgram:x /root/awg
-    setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
-
-    echo "Запускаем awgram..."
-    systemctl start awgram
-else
-    echo "awgram уже установлен — выдаём права и перезапускаем."
-    systemctl stop awgram 2>/dev/null || true
-    setfacl -m u:awgram:x /root
-    setfacl -m u:awgram:x /root/awg
-    setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
-    systemctl start awgram
 fi
+
+# Останавливаем сервис (если запущен), чтобы выдать права
+systemctl stop awgram 2>/dev/null || true
+
+# Выдаём права (после установки awgram пользователь уже существует)
+echo "Выдаём права awgram на /root/awg..."
+setfacl -m u:awgram:x /root
+setfacl -m u:awgram:x /root/awg
+setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
+
+# Проверяем, что awgram видит файл
+if ! sudo -u awgram ls /root/awg/manage_amneziawg.sh &>/dev/null; then
+    echo "⚠️ awgram всё ещё не видит файл. Пробуем ещё раз..."
+    setfacl -m u:awgram:x /root
+    setfacl -m u:awgram:x /root/awg
+    setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
+    if ! sudo -u awgram ls /root/awg/manage_amneziawg.sh &>/dev/null; then
+        echo "❌ Не удалось выдать права awgram. Проверь вручную."
+    fi
+fi
+
+# Запускаем сервис
+systemctl start awgram
 
 # ================= 9. CRON ДЛЯ ACL =================
 echo "=== 9. Cron для ACL ==="
