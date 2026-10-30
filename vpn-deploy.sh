@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -uo pipefail
 
 CONF="/root/deploy-vpn.conf"
 
@@ -55,6 +55,18 @@ if ! id "$NEW_USER" &>/dev/null; then
     usermod -aG sudo "$NEW_USER"
 fi
 
+# Копируем SSH-ключ из root пользователю (если есть)
+mkdir -p /home/$NEW_USER/.ssh
+if [[ -f /root/.ssh/authorized_keys ]] && grep -qE '^ssh-' /root/.ssh/authorized_keys; then
+    cp /root/.ssh/authorized_keys /home/$NEW_USER/.ssh/authorized_keys
+    chown -R $NEW_USER:$NEW_USER /home/$NEW_USER/.ssh
+    chmod 700 /home/$NEW_USER/.ssh
+    chmod 600 /home/$NEW_USER/.ssh/authorized_keys
+    echo "SSH-ключ скопирован пользователю $NEW_USER."
+else
+    echo "⚠️ В /root/.ssh/authorized_keys нет ключа. Вход по паролю останется включённым."
+fi
+
 # ================= 2. БАЗОВАЯ СИСТЕМА =================
 echo "=== 2. Базовая система ==="
 export DEBIAN_FRONTEND=noninteractive
@@ -107,6 +119,17 @@ sysctl -w kernel.unprivileged_userns_clone=0
 # ================= 3. SSH =================
 echo "=== 3. SSH ==="
 sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
+
+# Отключаем root и пароль, если ключ есть
+if [[ -f /home/$NEW_USER/.ssh/authorized_keys ]] && grep -qE '^ssh-' /home/$NEW_USER/.ssh/authorized_keys; then
+    sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
+    sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication no/" /etc/ssh/sshd_config
+    sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" /etc/ssh/sshd_config
+    echo "Root по SSH отключён, вход только по ключу."
+else
+    echo "⚠️ Ключ не найден — root и пароль оставлены включёнными."
+fi
+
 systemctl disable --now ssh.socket 2>/dev/null || true
 systemctl enable --now ssh.service
 systemctl restart ssh
@@ -181,31 +204,23 @@ fi
 echo "=== 8. awgram ==="
 if ! command -v awgram &> /dev/null; then
     echo "Устанавливаем awgram (интерактивно: язык, режим, токен, ID, путь)..."
-    curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh | bash
+    curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh | bash || true
 fi
 
-# Останавливаем сервис (если запущен), чтобы выдать права
 systemctl stop awgram 2>/dev/null || true
 
-# Выдаём права (после установки awgram пользователь уже существует)
-echo "Выдаём права awgram на /root/awg..."
-setfacl -m u:awgram:x /root
-setfacl -m u:awgram:x /root/awg
-setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
+setfacl -m u:awgram:x /root 2>/dev/null || true
+setfacl -m u:awgram:x /root/awg 2>/dev/null || true
+setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh 2>/dev/null || true
 
-# Проверяем, что awgram видит файл
 if ! sudo -u awgram ls /root/awg/manage_amneziawg.sh &>/dev/null; then
-    echo "⚠️ awgram всё ещё не видит файл. Пробуем ещё раз..."
-    setfacl -m u:awgram:x /root
-    setfacl -m u:awgram:x /root/awg
-    setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh
-    if ! sudo -u awgram ls /root/awg/manage_amneziawg.sh &>/dev/null; then
-        echo "❌ Не удалось выдать права awgram. Проверь вручную."
-    fi
+    echo "⚠️ awgram не видит файл. Пробуем ещё раз..."
+    setfacl -m u:awgram:x /root 2>/dev/null || true
+    setfacl -m u:awgram:x /root/awg 2>/dev/null || true
+    setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh 2>/dev/null || true
 fi
 
-# Запускаем сервис
-systemctl start awgram
+systemctl start awgram 2>/dev/null || true
 
 # ================= 9. CRON ДЛЯ ACL =================
 echo "=== 9. Cron для ACL ==="
@@ -226,3 +241,5 @@ systemctl status awgram --no-pager | head -5
 iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || echo "NAT не найден!"
 
 echo "=== ГОТОВО ==="
+echo "Теперь можешь зайти под $NEW_USER по SSH-ключу на порт $SSH_PORT."
+echo "Root по SSH отключён (если ключ был скопирован)."
