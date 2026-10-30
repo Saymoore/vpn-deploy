@@ -55,18 +55,6 @@ if ! id "$NEW_USER" &>/dev/null; then
     usermod -aG sudo "$NEW_USER"
 fi
 
-# Копируем SSH-ключ из root пользователю (если есть)
-mkdir -p /home/$NEW_USER/.ssh
-if [[ -f /root/.ssh/authorized_keys ]] && grep -qE '^ssh-' /root/.ssh/authorized_keys; then
-    cp /root/.ssh/authorized_keys /home/$NEW_USER/.ssh/authorized_keys
-    chown -R $NEW_USER:$NEW_USER /home/$NEW_USER/.ssh
-    chmod 700 /home/$NEW_USER/.ssh
-    chmod 600 /home/$NEW_USER/.ssh/authorized_keys
-    echo "SSH-ключ скопирован пользователю $NEW_USER."
-else
-    echo "⚠️ В /root/.ssh/authorized_keys нет ключа. Вход по паролю останется включённым."
-fi
-
 # ================= 2. БАЗОВАЯ СИСТЕМА =================
 echo "=== 2. Базовая система ==="
 export DEBIAN_FRONTEND=noninteractive
@@ -120,15 +108,12 @@ sysctl -w kernel.unprivileged_userns_clone=0
 echo "=== 3. SSH ==="
 sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
 
-# Отключаем root и пароль, если ключ есть
-if [[ -f /home/$NEW_USER/.ssh/authorized_keys ]] && grep -qE '^ssh-' /home/$NEW_USER/.ssh/authorized_keys; then
-    sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
-    sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication no/" /etc/ssh/sshd_config
-    sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" /etc/ssh/sshd_config
-    echo "Root по SSH отключён, вход только по ключу."
-else
-    echo "⚠️ Ключ не найден — root и пароль оставлены включёнными."
-fi
+# Root по SSH отключаем (безопасно)
+sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
+
+# Вход по паролю оставляем включённым (ключ будет позже)
+sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication yes/" /etc/ssh/sshd_config
+sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" /etc/ssh/sshd_config
 
 systemctl disable --now ssh.socket 2>/dev/null || true
 systemctl enable --now ssh.service
@@ -241,5 +226,5 @@ systemctl status awgram --no-pager | head -5
 iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || echo "NAT не найден!"
 
 echo "=== ГОТОВО ==="
-echo "Теперь можешь зайти под $NEW_USER по SSH-ключу на порт $SSH_PORT."
-echo "Root по SSH отключён (если ключ был скопирован)."
+echo "Заходи под $NEW_USER по паролю на порт $SSH_PORT."
+echo "Root по SSH отключён."
