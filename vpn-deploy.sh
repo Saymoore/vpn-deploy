@@ -249,10 +249,14 @@ if ! systemctl is-active --quiet awg-quick@awg0; then
     info "Скачивание установщика AmneziaWG..."
     run wget -qO /tmp/install_amneziawg.sh https://github.com/bivlked/amneziawg-installer/releases/latest/download/install_amneziawg.sh
     chmod +x /tmp/install_amneziawg.sh
-    info "Запуск установщика AmneziaWG..."
-    info "ВАЖНО: когда установщик спросит 'Перезагрузить сейчас? [y/N]', ответь N (нет)."
-    info "Скрипт покажет, что делать дальше."
-    bash /tmp/install_amneziawg.sh --port="$AWG_PORT" --subnet="10.9.9.1/24" --route-amnezia || true
+    info "Запуск установщика AmneziaWG (все параметры переданы, вопросов не будет)..."
+    bash /tmp/install_amneziawg.sh \
+        --port="$AWG_PORT" \
+        --subnet="10.9.9.1/24" \
+        --disallow-ipv6 \
+        --route-amnezia \
+        --isolation=on \
+        --server-name="$SERVER_NAME" || true
 
     if systemctl is-active --quiet awg-quick@awg0; then
         ok "AmneziaWG установлен и работает."
