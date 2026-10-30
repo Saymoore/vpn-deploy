@@ -24,9 +24,6 @@ else
     read -rp "Введите UDP-порт для AmneziaWG [443]: " AWG_PORT
     AWG_PORT=${AWG_PORT:-443}
 
-    read -rp "Введите ваш Telegram ID (только цифры): " ADMIN_ID
-    if [[ ! "$ADMIN_ID" =~ ^[0-9]+$ ]]; then echo "ID должен быть числом."; exit 1; fi
-
     read -rp "Введите ваш IP для белого списка Fail2Ban (или оставьте пустым): " WHITELIST_IP
 
     cat > "$CONF" <<EOF
@@ -34,7 +31,6 @@ NEW_USER="$NEW_USER"
 SSH_PORT="$SSH_PORT"
 SERVER_NAME="$SERVER_NAME"
 AWG_PORT="$AWG_PORT"
-ADMIN_ID="$ADMIN_ID"
 WHITELIST_IP="$WHITELIST_IP"
 EOF
     chmod 600 "$CONF"
