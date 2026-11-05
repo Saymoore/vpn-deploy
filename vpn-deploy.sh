@@ -43,7 +43,6 @@ run() {
 }
 
 CONF="/etc/deploy-vpn.conf"
-# ИСПРАВЛЕНО: теперь везде используется эта переменная с sudo
 RUN_CMD="curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/d.sh && sudo bash /tmp/d.sh"
 
 # ================= НАСТРОЙКИ =================
@@ -154,7 +153,7 @@ if [[ "$CURRENT_KERNEL" != "$INSTALLED_KERNEL" ]]; then
     echo -e "     ${GREEN}sudo reboot${NC}"
     echo -e "  2. После перезагрузки зайди снова (порт пока 22):"
     echo -e "     ${GREEN}ssh root@$(hostname -I | awk '{print $1}')${NC}"
-    echo -e "  3. Запусти скрипт снова (ИСПРАВЛЕНО - теперь с sudo):"
+    echo -e "  3. Запусти скрипт снова:"
     echo -e "     ${GREEN}$RUN_CMD${NC}"
     echo -e "${YELLOW}==================================================${NC}"
     exit 1
@@ -250,7 +249,7 @@ if ! systemctl is-active --quiet awg-quick@awg0; then
     info "Скачивание установщика AmneziaWG..."
     run wget -qO /tmp/install_amneziawg.sh https://github.com/bivlked/amneziawg-installer/releases/latest/download/install_amneziawg.sh
     chmod +x /tmp/install_amneziawg.sh
-    info "Запуск установщика AmneziaWG (все параметры переданы, вопросов не будет)..."
+    info "Запуск установщика AmneziaWG..."
     bash /tmp/install_amneziawg.sh \
         --port="$AWG_PORT" \
         --subnet="10.9.9.1/24" \
@@ -270,7 +269,7 @@ if ! systemctl is-active --quiet awg-quick@awg0; then
         echo -e "     ${GREEN}sudo reboot${NC}"
         echo -e "  2. После перезагрузки зайди под ${CYAN}$NEW_USER${NC} (порт ${CYAN}$SSH_PORT${NC}):"
         echo -e "     ${GREEN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
-        echo -e "  3. Запусти скрипт снова (ИСПРАВЛЕНО - теперь с sudo):"
+        echo -e "  3. Запусти скрипт снова:"
         echo -e "     ${GREEN}$RUN_CMD${NC}"
         echo -e "${YELLOW}==================================================${NC}"
         exit 0
