@@ -43,6 +43,7 @@ run() {
 }
 
 CONF="/etc/deploy-vpn.conf"
+# ИСПРАВЛЕНО: теперь везде используется эта переменная с sudo
 RUN_CMD="curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/d.sh && sudo bash /tmp/d.sh"
 
 # ================= НАСТРОЙКИ =================
@@ -153,7 +154,7 @@ if [[ "$CURRENT_KERNEL" != "$INSTALLED_KERNEL" ]]; then
     echo -e "     ${GREEN}sudo reboot${NC}"
     echo -e "  2. После перезагрузки зайди снова (порт пока 22):"
     echo -e "     ${GREEN}ssh root@$(hostname -I | awk '{print $1}')${NC}"
-    echo -e "  3. Запусти скрипт снова:"
+    echo -e "  3. Запусти скрипт снова (ИСПРАВЛЕНО - теперь с sudo):"
     echo -e "     ${GREEN}$RUN_CMD${NC}"
     echo -e "${YELLOW}==================================================${NC}"
     exit 1
@@ -269,7 +270,7 @@ if ! systemctl is-active --quiet awg-quick@awg0; then
         echo -e "     ${GREEN}sudo reboot${NC}"
         echo -e "  2. После перезагрузки зайди под ${CYAN}$NEW_USER${NC} (порт ${CYAN}$SSH_PORT${NC}):"
         echo -e "     ${GREEN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
-        echo -e "  3. Запусти скрипт снова:"
+        echo -e "  3. Запусти скрипт снова (ИСПРАВЛЕНО - теперь с sudo):"
         echo -e "     ${GREEN}$RUN_CMD${NC}"
         echo -e "${YELLOW}==================================================${NC}"
         exit 0
@@ -327,6 +328,11 @@ else
     info "WhiteVPN уже установлен."
 fi
 
+# Принудительный запуск whitevpn-firewall после установки
+info "Запуск whitevpn-firewall..."
+systemctl start whitevpn-firewall 2>/dev/null || true
+systemctl status whitevpn-firewall --no-pager | head -5
+
 # ================= 11. ПРОВЕРКА =================
 step "11. Проверка"
 info "Статус AmneziaWG:"
@@ -335,6 +341,8 @@ info "Статус awgram:"
 systemctl status awgram --no-pager | head -5
 info "Проверка NAT:"
 iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || warn "NAT не найден!"
+info "Проверка whitevpn:"
+sudo ipset list blocked_ips 2>/dev/null | grep "Number of entries" || warn "ipset blocked_ips пуст или не создан"
 
 echo -e "\n${GREEN}==================================================${NC}"
 echo -e "${GREEN}   ✅ РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!                    ${NC}"
