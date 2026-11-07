@@ -343,6 +343,19 @@ iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || warn "NAT не най�
 info "Проверка whitevpn:"
 sudo ipset list blocked_ips 2>/dev/null | grep "Number of entries" || warn "ipset blocked_ips пуст или не создан"
 
+# ================= 12. КОНФИГ НА MAC =================
+step "12. Конфиг для Mac"
+info "Копируем my_laptop.conf в /tmp/ с правами на чтение..."
+cp /root/awg/my_laptop.conf /tmp/ 2>/dev/null || true
+chmod 644 /tmp/my_laptop.conf 2>/dev/null || true
+ok "Готово."
+
+echo -e "\n${CYAN}Чтобы скачать конфиг на Mac, выполни на Mac:${NC}"
+echo -e "  ${GREEN}scp -P 2222 saymoore@217.60.252.103:/tmp/my_laptop.conf ~/Downloads/${NC}"
+echo -e "\n${YELLOW}Если SSH с Mac блокируется — используй временный HTTP-сервер на сервере:${NC}"
+echo -e "  ${GREEN}cd /tmp && python3 -m http.server 8080${NC}"
+echo -e "  затем на Mac: ${GREEN}curl -f -o ~/Downloads/my_laptop.conf http://217.60.252.103:8080/my_laptop.conf${NC}"
+
 echo -e "\n${GREEN}==================================================${NC}"
 echo -e "${GREEN}   ✅ РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!                    ${NC}"
 echo -e "${GREEN}==================================================${NC}"
