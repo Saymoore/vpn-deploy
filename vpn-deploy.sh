@@ -1,4 +1,3 @@
-cat > /root/d.sh <<'SCRIPT_EOF'
 #!/bin/bash
 set -uo pipefail
 
@@ -155,7 +154,7 @@ if [[ "$CURRENT_KERNEL" != "$INSTALLED_KERNEL" ]]; then
     echo -e "  2. После перезагрузки зайди снова (порт пока 22):"
     echo -e "     ${GREEN}ssh root@$(hostname -I | awk '{print $1}')${NC}"
     echo -e "  3. Запусти скрипт снова:"
-    echo -e "     ${GREEN}bash /root/d.sh${NC}"
+    echo -e "     ${GREEN}$RUN_CMD${NC}"
     echo -e "${YELLOW}==================================================${NC}"
     exit 1
 fi
@@ -172,8 +171,20 @@ echo 'kernel.unprivileged_userns_clone = 0' | tee /etc/sysctl.d/99-userns.conf >
 sysctl -w kernel.unprivileged_userns_clone=0 >/dev/null
 ok "Базовая система готова."
 
-# ================= 3. FAIL2BAN =================
-step "3. Fail2Ban"
+# ================= 3. SSH =================
+step "3. SSH"
+info "Настройка SSH (порт $SSH_PORT, root отключён, пароль включён)..."
+sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
+sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
+sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication yes/" /etc/ssh/sshd_config
+sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" /etc/ssh/sshd_config
+run systemctl disable --now ssh.socket
+run systemctl enable --now ssh.service
+run systemctl restart ssh
+ok "SSH настроен."
+
+# ================= 4. FAIL2BAN =================
+step "4. Fail2Ban"
 info "Установка Fail2Ban..."
 run apt install -y fail2ban
 sed -i 's|fail2ban-client flushlogs 1>/dev/null|fail2ban-client flushlogs 1>/dev/null \|\| true|' /etc/logrotate.d/fail2ban 2>/dev/null || true
@@ -196,16 +207,16 @@ run systemctl restart fail2ban
 sleep 1
 fail2ban-client status sshd && ok "Fail2Ban настроен." || warn "Fail2Ban не запустился."
 
-# ================= 4. NAT =================
-step "4. NAT для VPN"
+# ================= 5. NAT =================
+step "5. NAT для VPN"
 info "Добавление NAT-правила..."
 iptables -t nat -A POSTROUTING -s 10.9.9.0/24 -o "$NET_IFACE" -j MASQUERADE
 run apt install -y iptables-persistent <<< "yes
 yes"
 ok "NAT настроен."
 
-# ================= 5. LOGROTATE =================
-step "5. Logrotate"
+# ================= 6. LOGROTATE =================
+step "6. Logrotate"
 info "Настройка Logrotate..."
 run apt install -y logrotate
 cat > /etc/logrotate.d/rsyslog <<EOF
@@ -232,8 +243,8 @@ cat > /etc/logrotate.d/rsyslog <<EOF
 EOF
 ok "Logrotate настроен."
 
-# ================= 6. AMNEZIAWG =================
-step "6. AmneziaWG"
+# ================= 7. AMNEZIAWG =================
+step "7. AmneziaWG"
 if ! systemctl is-active --quiet awg-quick@awg0; then
     info "Скачивание установщика AmneziaWG..."
     run wget -qO /tmp/install_amneziawg.sh https://github.com/bivlked/amneziawg-installer/releases/latest/download/install_amneziawg.sh
@@ -256,10 +267,10 @@ if ! systemctl is-active --quiet awg-quick@awg0; then
         echo -e "${CYAN}Что делать:${NC}"
         echo -e "  1. Перезагрузи сервер:"
         echo -e "     ${GREEN}sudo reboot${NC}"
-        echo -e "  2. После перезагрузки зайди под root (порт 22):"
-        echo -e "     ${GREEN}ssh root@$(hostname -I | awk '{print $1}')${NC}"
+        echo -e "  2. После перезагрузки зайди под ${CYAN}$NEW_USER${NC} (порт ${CYAN}$SSH_PORT${NC}):"
+        echo -e "     ${GREEN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
         echo -e "  3. Запусти скрипт снова:"
-        echo -e "     ${GREEN}bash /root/d.sh${NC}"
+        echo -e "     ${GREEN}$RUN_CMD${NC}"
         echo -e "${YELLOW}==================================================${NC}"
         exit 0
     fi
@@ -267,8 +278,8 @@ else
     info "AmneziaWG уже установлен."
 fi
 
-# ================= 7. AWGRAM =================
-step "7. awgram"
+# ================= 8. AWGRAM =================
+step "8. awgram"
 if ! command -v awgram &> /dev/null; then
     info "Устанавливаем awgram (интерактивно: язык, режим, токен, ID, путь)..."
     curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh | bash || true
@@ -298,15 +309,15 @@ else
     warn "awgram не запустился. Проверь: systemctl status awgram"
 fi
 
-# ================= 8. CRON ДЛЯ ACL =================
-step "8. Cron для ACL"
+# ================= 9. CRON ДЛЯ ACL =================
+step "9. Cron для ACL"
 info "Настройка cron для автоматической выдачи прав..."
 echo "*/1 * * * * root bash -c 'for f in /root/awg/*.conf /root/awg/*.png /root/awg/*.vpnuri; do setfacl -m u:awgram:rx \"\$f\" 2>/dev/null; done'" > /etc/cron.d/awgram-acl
 bash -c 'for f in /root/awg/*.conf /root/awg/*.png /root/awg/*.vpnuri; do setfacl -m u:awgram:rx "$f"; done' 2>/dev/null || true
 ok "Cron настроен."
 
-# ================= 9. WHITEVPN =================
-step "9. WhiteVPN"
+# ================= 10. WHITEVPN =================
+step "10. WhiteVPN"
 if [ ! -d /opt/block-traffic ]; then
     info "Установка WhiteVPN (без бота)..."
     run curl -fsSL https://raw.githubusercontent.com/anten-ka/whitevpn/main/install.sh -o /tmp/whitevpn-install.sh
@@ -316,12 +327,13 @@ else
     info "WhiteVPN уже установлен."
 fi
 
+# Принудительный запуск whitevpn-firewall после установки
 info "Запуск whitevpn-firewall..."
 systemctl start whitevpn-firewall 2>/dev/null || true
 systemctl status whitevpn-firewall --no-pager | head -5
 
-# ================= 10. ПРОВЕРКА =================
-step "10. Проверка"
+# ================= 11. ПРОВЕРКА =================
+step "11. Проверка"
 info "Статус AmneziaWG:"
 systemctl status awg-quick@awg0 --no-pager | head -5
 info "Статус awgram:"
@@ -330,59 +342,6 @@ info "Проверка NAT:"
 iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || warn "NAT не найден!"
 info "Проверка whitevpn:"
 sudo ipset list blocked_ips 2>/dev/null | grep "Number of entries" || warn "ipset blocked_ips пуст или не создан"
-
-# ================= 11. КОНФИГ НА MAC =================
-step "11. Конфиг для Mac"
-info "Копируем my_laptop.conf в /tmp/ с правами на чтение..."
-cp /root/awg/my_laptop.conf /tmp/ 2>/dev/null || true
-chmod 644 /tmp/my_laptop.conf 2>/dev/null || true
-ok "Готово."
-
-echo -e "\n${CYAN}Чтобы скачать конфиг на Mac, выполни на Mac:${NC}"
-echo -e "  ${GREEN}scp -P $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}'):/tmp/my_laptop.conf ~/Downloads/${NC}"
-echo -e "\n${YELLOW}Если SSH с Mac блокируется — используй временный HTTP-сервер на сервере:${NC}"
-echo -e "  ${GREEN}cd /tmp && python3 -m http.server 8080${NC}"
-echo -e "  затем на Mac: ${GREEN}curl -f -o ~/Downloads/my_laptop.conf http://$(hostname -I | awk '{print $1}'):8080/my_laptop.conf${NC}"
-
-# ================= 12. SSH (В КОНЦЕ) =================
-step "12. SSH (финальная настройка)"
-info "Проверка пользователя $NEW_USER перед сменой SSH..."
-if ! id "$NEW_USER" &>/dev/null; then
-    err "Пользователь $NEW_USER не существует. SSH не трогаю."
-    exit 1
-fi
-
-if ! sudo -u "$NEW_USER" test -r /home/$NEW_USER 2>/dev/null; then
-    warn "Не удалось проверить домашний каталог $NEW_USER. Продолжаю."
-fi
-
-info "Настройка SSH (порт $SSH_PORT, root отключён, пароль включён)..."
-cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%s)
-sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
-sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
-sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication yes/" /etc/ssh/sshd_config
-sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" /etc/ssh/sshd_config
-
-info "Проверка конфигурации SSH..."
-if ! sshd -t; then
-    err "Конфигурация SSH некорректна. Восстанавливаю из бэкапа."
-    cp /etc/ssh/sshd_config.bak.* /etc/ssh/sshd_config
-    exit 1
-fi
-
-run systemctl disable --now ssh.socket
-run systemctl enable --now ssh.service
-run systemctl restart ssh
-sleep 2
-
-if systemctl is-active --quiet ssh; then
-    ok "SSH настроен: порт $SSH_PORT, root отключён."
-else
-    err "SSH не запустился. Восстанавливаю из бэкапа."
-    cp /etc/ssh/sshd_config.bak.* /etc/ssh/sshd_config
-    systemctl restart ssh
-    exit 1
-fi
 
 echo -e "\n${GREEN}==================================================${NC}"
 echo -e "${GREEN}   ✅ РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!                    ${NC}"
@@ -393,6 +352,4 @@ echo -e "Для входа по SSH используй:"
 echo -e "  ${CYAN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
 echo -e ""
 echo -e "Root по SSH отключён (безопасность)."
-echo -e "Если что-то пойдёт не так — вход под root на порту 22 закрыт."
 echo -e "${GREEN}==================================================${NC}"
-SCRIPT_EOF
