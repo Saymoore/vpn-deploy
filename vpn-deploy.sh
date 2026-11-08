@@ -386,7 +386,7 @@ if [[ -n "$FIRST_CONF" ]]; then
     info "Отсканируй QR-код в приложении Amnezia (на iPhone/Android):"
     echo ""
     # Генерируем QR-код из .conf файла
-    qrencode -t ansiutf8 -m 1 -s < "$FIRST_CONF" || warn "Не удалось сгенерировать QR-код (установлен ли qrencode?)"
+    qrencode -t ansiutf8 < "$FIRST_CONF" || warn "Не удалось сгенерировать QR-код (установлен ли qrencode?)"
     echo ""
     info "Файл конфига: $FIRST_CONF"
     info "Путь на сервере: /root/awg/$CLIENT_NAME.conf"
