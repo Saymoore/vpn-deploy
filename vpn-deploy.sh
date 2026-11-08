@@ -66,7 +66,23 @@ else
     read -rp "Введите UDP-порт для AmneziaWG [443]: " AWG_PORT
     AWG_PORT=${AWG_PORT:-443}
 
-    read -rp "Введите ваш IP для белого списка Fail2Ban (или оставьте пустым): " WHITELIST_IP
+    # Автоопределение IP пользователя, запустившего скрипт
+    if [[ -n "${SSH_CLIENT:-}" ]]; then
+        CUR_IP=$(echo "$SSH_CLIENT" | awk '{print $1}')
+    else
+        CUR_IP=""
+    fi
+    
+    read -rp "Введите дополнительный IP для белого списка Fail2Ban (текущий: ${CUR_IP:-неизвестен}, оставьте пустым, если не нужен): " EXTRA_IP
+    
+    WHITELIST_IP="$CUR_IP"
+    if [[ -n "$EXTRA_IP" ]]; then
+        if [[ -n "$WHITELIST_IP" ]]; then
+            WHITELIST_IP="$WHITELIST_IP $EXTRA_IP"
+        else
+            WHITELIST_IP="$EXTRA_IP"
+        fi
+    fi
 
     cat > "$CONF" <<EOF
 NEW_USER="$NEW_USER"
@@ -77,6 +93,7 @@ WHITELIST_IP="$WHITELIST_IP"
 EOF
     chmod 600 "$CONF"
     ok "Настройки сохранены в $CONF"
+    info "IP для whitelist Fail2Ban: $WHITELIST_IP"
 fi
 
 NET_IFACE=$(ip -4 route show default | awk '{print $5}' | head -n1)
@@ -104,7 +121,7 @@ step "2. Базовая система"
 export DEBIAN_FRONTEND=noninteractive
 info "Обновление пакетов (может занять время)..."
 run apt update
-run apt install -y gpg acl curl wget
+run apt install -y gpg acl curl wget qrencode
 ok "Базовые пакеты установлены."
 
 info "Настройка IPv6 и форвардинга..."
@@ -171,17 +188,16 @@ echo 'kernel.unprivileged_userns_clone = 0' | tee /etc/sysctl.d/99-userns.conf >
 sysctl -w kernel.unprivileged_userns_clone=0 >/dev/null
 ok "Базовая система готова."
 
-# ================= 3. SSH =================
-step "3. SSH"
-info "Настройка SSH (порт $SSH_PORT, root отключён, пароль включён)..."
+# ================= 3. SSH (настройка порта, без отключения root) =================
+step "3. SSH (настройка порта)"
+info "Настройка SSH (порт $SSH_PORT)..."
 sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
-sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
 sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication yes/" /etc/ssh/sshd_config
 sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" /etc/ssh/sshd_config
 run systemctl disable --now ssh.socket
 run systemctl enable --now ssh.service
 run systemctl restart ssh
-ok "SSH настроен."
+ok "SSH порт изменён на $SSH_PORT."
 
 # ================= 4. FAIL2BAN =================
 step "4. Fail2Ban"
@@ -342,6 +358,41 @@ info "Проверка NAT:"
 iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || warn "NAT не найден!"
 info "Проверка whitevpn:"
 sudo ipset list blocked_ips 2>/dev/null | grep "Number of entries" || warn "ipset blocked_ips пуст или не создан"
+
+# ================= 12. ОТКЛЮЧЕНИЕ ROOT (В САМОМ КОНЦЕ) =================
+step "12. Отключение root по SSH"
+info "Проверка, что пользователь $NEW_USER может зайти по SSH..."
+
+if id "$NEW_USER" &>/dev/null && [ -d "/home/$NEW_USER" ]; then
+    if ss -tulpn | grep -q ":$SSH_PORT"; then
+        info "Порт $SSH_PORT слушается. Отключаем root..."
+        sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
+        run systemctl restart ssh
+        ok "Root по SSH отключён."
+    else
+        warn "Порт $SSH_PORT не слушается. Root оставлен включённым для безопасности."
+    fi
+else
+    warn "Пользователь $NEW_USER не найден или его домашняя папка отсутствует. Root оставлен включённым."
+fi
+
+# ================= 13. ВЫВОД QR-КОДА ПЕРВОГО КЛИЕНТА =================
+step "13. Первый клиент (QR-код)"
+# Ищем первый .conf файл в /root/awg/
+FIRST_CONF=$(ls /root/awg/*.conf 2>/dev/null | head -n 1)
+if [[ -n "$FIRST_CONF" ]]; then
+    CLIENT_NAME=$(basename "$FIRST_CONF" .conf)
+    info "Найден конфиг первого клиента: $CLIENT_NAME"
+    info "Отсканируй QR-код в приложении Amnezia (на iPhone/Android):"
+    echo ""
+    # Генерируем QR-код из .conf файла
+    qrencode -t ansiutf8 < "$FIRST_CONF" || warn "Не удалось сгенерировать QR-код (установлен ли qrencode?)"
+    echo ""
+    info "Файл конфига: $FIRST_CONF"
+    info "Путь на сервере: /root/awg/$CLIENT_NAME.conf"
+else
+    warn "Не найдено ни одного .conf файла в /root/awg/. Создай клиента через бота или manage_amneziawg.sh add <имя>."
+fi
 
 echo -e "\n${GREEN}==================================================${NC}"
 echo -e "${GREEN}   ✅ РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!                    ${NC}"
