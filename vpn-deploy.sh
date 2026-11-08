@@ -1,6 +1,13 @@
 #!/bin/bash
 set -uo pipefail
 
+# ================= ПРОВЕРКА ROOT =================
+if [ "$EUID" -ne 0 ]; then
+  echo -e "\033[0;31m[ERROR]\033[0m Этот скрипт нужно запускать от имени root или через sudo."
+  echo -e "  Попробуй: \033[0;32msudo bash $0\033[0m"
+  exit 1
+fi
+
 # ================= ЦВЕТА =================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -43,7 +50,8 @@ run() {
 }
 
 CONF="/etc/deploy-vpn.conf"
-RUN_CMD="curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/d.sh && sudo bash /tmp/d.sh"
+# Теперь команда выполняется целиком от root, без танцев с паролем
+RUN_CMD="sudo bash -c 'curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/d.sh && bash /tmp/d.sh'"
 
 # ================= НАСТРОЙКИ =================
 if [[ -f "$CONF" ]]; then
@@ -386,7 +394,7 @@ if [[ -n "$FIRST_CONF" ]]; then
     info "Отсканируй QR-код в приложении Amnezia (на iPhone/Android):"
     echo ""
     # Генерируем QR-код из .conf файла
-    qrencode -t ansiutf8 < "$FIRST_CONF" || warn "Не удалось сгенерировать QR-код (установлен ли qrencode?)"
+    qrencode -t ansiutf8 -m 1 -s 1 < "$FIRST_CONF" || warn "Не удалось сгенерировать QR-код (установлен ли qrencode?)"
     echo ""
     info "Файл конфига: $FIRST_CONF"
     info "Путь на сервере: /root/awg/$CLIENT_NAME.conf"
