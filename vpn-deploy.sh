@@ -3,12 +3,12 @@ set -uo pipefail
 
 # ================= ПРОВЕРКА ROOT =================
 if [ "$EUID" -ne 0 ]; then
-  echo -e "\033[0;31m[ERROR]\033[0m Этот скрипт нужно запускать от имени root или через sudo."
-  echo -e "  Попробуй: \033[0;32msudo bash $0\033[0m"
+  echo -e "\033[0;31m[ERROR]\033[0m Этот скрипт нужно запускать от имени root или через sudo. (This script must be run as root or via sudo.)"
+  echo -e "  Попробуй (Try): \033[0;32msudo bash $0\033[0m"
   exit 1
 fi
 
-# ================= ЦВЕТА =================
+# ================= ЦВЕТА (COLORS) =================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -23,19 +23,19 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 err()   { echo -e "${RED}[ERROR]${NC} $1"; }
 step()  { echo -e "\n${CYAN}=== $1 ===${NC}"; }
 
-# ================= РЕЖИМ ВЫВОДА =================
-echo -e "${CYAN}Выберите режим вывода:${NC}"
-echo -e "  1) Краткий (только ключевые сообщения)"
-echo -e "  2) Полный (весь вывод команд, для отладки)"
-read -rp "Ваш выбор [1]: " OUTPUT_MODE
+# ================= РЕЖИМ ВЫВОДА (OUTPUT MODE) =================
+echo -e "${CYAN}Выберите режим вывода (Select output mode):${NC}"
+echo -e "  1) Краткий (Brief - only key messages)"
+echo -e "  2) Полный (Full - all command output, for debugging)"
+read -rp "Ваш выбор (Your choice) [1]: " OUTPUT_MODE
 OUTPUT_MODE=${OUTPUT_MODE:-1}
 
 if [[ "$OUTPUT_MODE" == "2" ]]; then
     VERBOSE=true
-    info "Включён полный режим вывода."
+    info "Включён полный режим вывода. (Full output mode enabled.)"
 else
     VERBOSE=false
-    info "Включён краткий режим вывода."
+    info "Включён краткий режим вывода. (Brief output mode enabled.)"
 fi
 
 run() {
@@ -43,45 +43,45 @@ run() {
         "$@"
     else
         "$@" >/dev/null 2>&1 || {
-            err "Команда завершилась с ошибкой: $*"
+            err "Команда завершилась с ошибкой (Command failed): $*"
             "$@" 2>&1 | tail -20
         }
     fi
 }
 
 CONF="/etc/deploy-vpn.conf"
-# Теперь команда выполняется целиком от root, без танцев с паролем
 RUN_CMD="sudo bash -c 'curl -sL https://raw.githubusercontent.com/Saymoore/vpn-deploy/main/vpn-deploy.sh -o /tmp/d.sh && bash /tmp/d.sh'"
 
-# ================= НАСТРОЙКИ =================
+# ================= НАСТРОЙКИ (SETTINGS) =================
 if [[ -f "$CONF" ]]; then
     source "$CONF"
-    info "Загружены сохранённые настройки из $CONF"
+    info "Загружены сохранённые настройки из $CONF (Loaded saved settings from $CONF)"
 else
     echo -e "${MAGENTA}==================================================${NC}"
     echo -e "${MAGENTA}   Скрипт развертывания VPN-сервера (AmneziaWG)    ${NC}"
+    echo -e "${MAGENTA}   VPN Server Deployment Script (AmneziaWG)        ${NC}"
     echo -e "${MAGENTA}==================================================${NC}"
 
-    read -rp "Введите имя нового пользователя: " NEW_USER
-    if [[ -z "$NEW_USER" ]]; then err "Имя не может быть пустым."; exit 1; fi
+    read -rp "Введите имя нового пользователя (Enter new username): " NEW_USER
+    if [[ -z "$NEW_USER" ]]; then err "Имя не может быть пустым. (Username cannot be empty.)"; exit 1; fi
 
-    read -rp "Введите SSH-порт [2222]: " SSH_PORT
+    read -rp "Введите SSH-порт (Enter SSH port) [2222]: " SSH_PORT
     SSH_PORT=${SSH_PORT:-2222}
 
-    read -rp "Введите имя сервера в приложении Amnezia: " SERVER_NAME
-    if [[ -z "$SERVER_NAME" ]]; then err "Имя сервера не может быть пустым."; exit 1; fi
+    read -rp "Введите имя сервера в приложении Amnezia (Enter server name in Amnezia app): " SERVER_NAME
+    if [[ -z "$SERVER_NAME" ]]; then err "Имя сервера не может быть пустым. (Server name cannot be empty.)"; exit 1; fi
 
-    read -rp "Введите UDP-порт для AmneziaWG [443]: " AWG_PORT
+    read -rp "Введите UDP-порт для AmneziaWG (Enter UDP port for AmneziaWG) [443]: " AWG_PORT
     AWG_PORT=${AWG_PORT:-443}
 
-    # Автоопределение IP пользователя, запустившего скрипт
+    # Автоопределение IP пользователя (Auto-detect user IP)
     if [[ -n "${SSH_CLIENT:-}" ]]; then
         CUR_IP=$(echo "$SSH_CLIENT" | awk '{print $1}')
     else
         CUR_IP=""
     fi
     
-    read -rp "Введите дополнительный IP для белого списка Fail2Ban (текущий: ${CUR_IP:-неизвестен}, оставьте пустым, если не нужен): " EXTRA_IP
+    read -rp "Введите дополнительный IP для белого списка Fail2Ban (Enter extra IP for Fail2Ban whitelist, current: ${CUR_IP:-unknown}, leave empty if not needed): " EXTRA_IP
     
     WHITELIST_IP="$CUR_IP"
     if [[ -n "$EXTRA_IP" ]]; then
@@ -100,46 +100,46 @@ AWG_PORT="$AWG_PORT"
 WHITELIST_IP="$WHITELIST_IP"
 EOF
     chmod 600 "$CONF"
-    ok "Настройки сохранены в $CONF"
-    info "IP для whitelist Fail2Ban: $WHITELIST_IP"
+    ok "Настройки сохранены в $CONF (Settings saved to $CONF)"
+    info "IP для whitelist Fail2Ban (IP for Fail2Ban whitelist): $WHITELIST_IP"
 fi
 
 NET_IFACE=$(ip -4 route show default | awk '{print $5}' | head -n1)
 if [[ -z "$NET_IFACE" ]]; then
-    read -rp "Не удалось определить сетевой интерфейс. Введите вручную (например, eth0): " NET_IFACE
+    read -rp "Не удалось определить сетевой интерфейс. Введите вручную (Could not determine network interface. Enter manually, e.g. eth0): " NET_IFACE
 fi
-info "Сетевой интерфейс: $NET_IFACE"
+info "Сетевой интерфейс (Network interface): $NET_IFACE"
 
 echo -e "${MAGENTA}==================================================${NC}"
-info "Пользователь: $NEW_USER | SSH: $SSH_PORT | AWG: $AWG_PORT | Имя: $SERVER_NAME"
+info "Пользователь (User): $NEW_USER | SSH: $SSH_PORT | AWG: $AWG_PORT | Имя (Name): $SERVER_NAME"
 echo -e "${MAGENTA}==================================================${NC}"
 
-# ================= 1. ПОЛЬЗОВАТЕЛЬ =================
-step "1. Пользователь"
+# ================= 1. ПОЛЬЗОВАТЕЛЬ (USER) =================
+step "1. Пользователь (User)"
 if ! id "$NEW_USER" &>/dev/null; then
     adduser --gecos "" "$NEW_USER"
     run usermod -aG sudo "$NEW_USER"
-    ok "Пользователь $NEW_USER создан."
+    ok "Пользователь создан (User created): $NEW_USER"
 else
-    info "Пользователь $NEW_USER уже существует."
+    info "Пользователь уже существует (User already exists): $NEW_USER"
 fi
 
-# ================= 2. БАЗОВАЯ СИСТЕМА =================
-step "2. Базовая система"
+# ================= 2. БАЗОВАЯ СИСТЕМА (BASE SYSTEM) =================
+step "2. Базовая система (Base system)"
 export DEBIAN_FRONTEND=noninteractive
-info "Обновление пакетов (может занять время)..."
+info "Обновление пакетов (Updating packages, may take time)..."
 run apt update
 run apt install -y gpg acl curl wget qrencode
-ok "Базовые пакеты установлены."
+ok "Базовые пакеты установлены (Base packages installed)."
 
-info "Настройка IPv6 и форвардинга..."
+info "Настройка IPv6 и форвардинга (Configuring IPv6 and forwarding)..."
 grep -q "net.ipv6.conf.all.disable_ipv6" /etc/sysctl.conf || echo "net.ipv6.conf.all.disable_ipv6 = 1" >> /etc/sysctl.conf
 grep -q "net.ipv6.conf.default.disable_ipv6" /etc/sysctl.conf || echo "net.ipv6.conf.default.disable_ipv6 = 1" >> /etc/sysctl.conf
 grep -q "net.ipv6.conf.lo.disable_ipv6" /etc/sysctl.conf || echo "net.ipv6.conf.lo.disable_ipv6 = 1" >> /etc/sysctl.conf
 grep -q "net.ipv4.ip_forward" /etc/sysctl.conf || echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
 sysctl -p >/dev/null 2>&1
 
-info "Создание swap (1G)..."
+info "Создание swap (Creating swap, 1G)..."
 if [ ! -f /swapfile ]; then
     run fallocate -l 1G /swapfile
     run chmod 600 /swapfile
@@ -148,43 +148,44 @@ if [ ! -f /swapfile ]; then
     grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
     grep -q 'vm.swappiness=10' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
     sysctl -p >/dev/null 2>&1
-    ok "Swap создан."
+    ok "Swap создан (Swap created)."
 else
-    info "Swap уже существует."
+    info "Swap уже существует (Swap already exists)."
 fi
 
-info "Отключение systemd-resolved..."
+info "Отключение systemd-resolved (Disabling systemd-resolved)..."
 if [ -L /etc/resolv.conf ]; then
     rm /etc/resolv.conf
     printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
     run systemctl disable --now systemd-resolved
     run systemctl mask systemd-resolved
-    ok "DNS настроен."
+    ok "DNS настроен (DNS configured)."
 fi
 
-info "Обновление системы (может занять время)..."
+info "Обновление системы (Updating system, may take time)..."
 run apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade
 run apt install -y linux-generic
-ok "Система обновлена."
+ok "Система обновлена (System updated)."
 
 CURRENT_KERNEL=$(uname -r)
 INSTALLED_KERNEL=$(dpkg -l | grep -oP 'linux-image-\K[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic' | sort -V | tail -n1)
 if [[ "$CURRENT_KERNEL" != "$INSTALLED_KERNEL" ]]; then
     echo -e "\n${YELLOW}==================================================${NC}"
-    warn "Сервер загружен в старое ядро ($CURRENT_KERNEL), а установлено новое ($INSTALLED_KERNEL)."
+    warn "Сервер загружен в старое ядро, а установлено новое (Server booted into old kernel, new one installed)."
+    warn "Текущее ядро (Current kernel): $CURRENT_KERNEL, Установлено (Installed): $INSTALLED_KERNEL"
     echo -e "${YELLOW}==================================================${NC}"
-    echo -e "${CYAN}Что делать:${NC}"
-    echo -e "  1. Перезагрузи сервер:"
+    echo -e "${CYAN}Что делать (What to do):${NC}"
+    echo -e "  1. Перезагрузи сервер (Reboot server):"
     echo -e "     ${GREEN}sudo reboot${NC}"
-    echo -e "  2. После перезагрузки зайди снова (порт пока 22):"
+    echo -e "  2. После перезагрузки зайди снова, порт пока 22 (After reboot, log in again, port is still 22):"
     echo -e "     ${GREEN}ssh root@$(hostname -I | awk '{print $1}')${NC}"
-    echo -e "  3. Запусти скрипт снова:"
+    echo -e "  3. Запусти скрипт снова (Run the script again):"
     echo -e "     ${GREEN}$RUN_CMD${NC}"
     echo -e "${YELLOW}==================================================${NC}"
     exit 1
 fi
 
-info "Удаление старых ядер..."
+info "Удаление старых ядер (Removing old kernels)..."
 for old_kernel in $(dpkg -l | grep -oP 'linux-image-\K[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-generic' | sort -u); do
     if [[ "$old_kernel" != "$CURRENT_KERNEL" ]]; then
         run apt purge -y linux-image-$old_kernel linux-headers-$old_kernel linux-modules-$old_kernel
@@ -194,22 +195,22 @@ run apt autoremove -y
 
 echo 'kernel.unprivileged_userns_clone = 0' | tee /etc/sysctl.d/99-userns.conf >/dev/null
 sysctl -w kernel.unprivileged_userns_clone=0 >/dev/null
-ok "Базовая система готова."
+ok "Базовая система готова (Base system ready)."
 
-# ================= 3. SSH (настройка порта, без отключения root) =================
-step "3. SSH (настройка порта)"
-info "Настройка SSH (порт $SSH_PORT)..."
+# ================= 3. SSH (настройка порта) =================
+step "3. SSH (настройка порта / SSH port setup)"
+info "Настройка SSH (Configuring SSH, port $SSH_PORT)..."
 sed -i "s/^#*Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
 sed -i "s/^#*PasswordAuthentication .*/PasswordAuthentication yes/" /etc/ssh/sshd_config
 sed -i "s/^#*PubkeyAuthentication .*/PubkeyAuthentication yes/" /etc/ssh/sshd_config
 run systemctl disable --now ssh.socket
 run systemctl enable --now ssh.service
 run systemctl restart ssh
-ok "SSH порт изменён на $SSH_PORT."
+ok "SSH порт изменён на $SSH_PORT (SSH port changed to $SSH_PORT)."
 
 # ================= 4. FAIL2BAN =================
 step "4. Fail2Ban"
-info "Установка Fail2Ban..."
+info "Установка Fail2Ban (Installing Fail2Ban)..."
 run apt install -y fail2ban
 sed -i 's|fail2ban-client flushlogs 1>/dev/null|fail2ban-client flushlogs 1>/dev/null \|\| true|' /etc/logrotate.d/fail2ban 2>/dev/null || true
 
@@ -229,19 +230,19 @@ port = $SSH_PORT
 EOF
 run systemctl restart fail2ban
 sleep 1
-fail2ban-client status sshd && ok "Fail2Ban настроен." || warn "Fail2Ban не запустился."
+fail2ban-client status sshd && ok "Fail2Ban настроен (Fail2Ban configured)." || warn "Fail2Ban не запустился (Fail2Ban failed to start)."
 
 # ================= 5. NAT =================
-step "5. NAT для VPN"
-info "Добавление NAT-правила..."
+step "5. NAT для VPN (NAT for VPN)"
+info "Добавление NAT-правила (Adding NAT rule)..."
 iptables -t nat -A POSTROUTING -s 10.9.9.0/24 -o "$NET_IFACE" -j MASQUERADE
 run apt install -y iptables-persistent <<< "yes
 yes"
-ok "NAT настроен."
+ok "NAT настроен (NAT configured)."
 
 # ================= 6. LOGROTATE =================
 step "6. Logrotate"
-info "Настройка Logrotate..."
+info "Настройка Logrotate (Configuring Logrotate)..."
 run apt install -y logrotate
 cat > /etc/logrotate.d/rsyslog <<EOF
 /var/log/syslog
@@ -265,15 +266,15 @@ cat > /etc/logrotate.d/rsyslog <<EOF
     endscript
 }
 EOF
-ok "Logrotate настроен."
+ok "Logrotate настроен (Logrotate configured)."
 
 # ================= 7. AMNEZIAWG =================
 step "7. AmneziaWG"
 if ! systemctl is-active --quiet awg-quick@awg0; then
-    info "Скачивание установщика AmneziaWG..."
+    info "Скачивание установщика AmneziaWG (Downloading AmneziaWG installer)..."
     run wget -qO /tmp/install_amneziawg.sh https://github.com/bivlked/amneziawg-installer/releases/latest/download/install_amneziawg.sh
     chmod +x /tmp/install_amneziawg.sh
-    info "Запуск установщика AmneziaWG..."
+    info "Запуск установщика AmneziaWG (Running AmneziaWG installer)..."
     bash /tmp/install_amneziawg.sh \
         --port="$AWG_PORT" \
         --subnet="10.9.9.1/24" \
@@ -283,132 +284,132 @@ if ! systemctl is-active --quiet awg-quick@awg0; then
         --server-name="$SERVER_NAME" || true
 
     if systemctl is-active --quiet awg-quick@awg0; then
-        ok "AmneziaWG установлен и работает."
+        ok "AmneziaWG установлен и работает (AmneziaWG installed and running)."
     else
         echo -e "\n${YELLOW}==================================================${NC}"
-        warn "AmneziaWG установлен, но требует перезагрузку."
+        warn "AmneziaWG установлен, но требует перезагрузку (AmneziaWG installed, but requires reboot)."
         echo -e "${YELLOW}==================================================${NC}"
-        echo -e "${CYAN}Что делать:${NC}"
-        echo -e "  1. Перезагрузи сервер:"
+        echo -e "${CYAN}Что делать (What to do):${NC}"
+        echo -e "  1. Перезагрузи сервер (Reboot server):"
         echo -e "     ${GREEN}sudo reboot${NC}"
-        echo -e "  2. После перезагрузки зайди под ${CYAN}$NEW_USER${NC} (порт ${CYAN}$SSH_PORT${NC}):"
+        echo -e "  2. После перезагрузки зайди под $NEW_USER, порт $SSH_PORT (After reboot, log in as $NEW_USER, port $SSH_PORT):"
         echo -e "     ${GREEN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
-        echo -e "  3. Запусти скрипт снова:"
+        echo -e "  3. Запусти скрипт снова (Run the script again):"
         echo -e "     ${GREEN}$RUN_CMD${NC}"
         echo -e "${YELLOW}==================================================${NC}"
         exit 0
     fi
 else
-    info "AmneziaWG уже установлен."
+    info "AmneziaWG уже установлен (AmneziaWG already installed)."
 fi
 
 # ================= 8. AWGRAM =================
 step "8. awgram"
 if ! command -v awgram &> /dev/null; then
-    info "Устанавливаем awgram (интерактивно: язык, режим, токен, ID, путь)..."
+    info "Устанавливаем awgram (Installing awgram - interactive: language, mode, token, ID, path)..."
     curl -fsSL https://github.com/ekuraev/awgram/releases/latest/download/install.sh | bash || true
 fi
 
-info "Останавливаем сервис для выдачи прав..."
+info "Останавливаем сервис для выдачи прав (Stopping service to set permissions)..."
 run systemctl stop awgram
 
-info "Выдаём права awgram на /root/awg..."
+info "Выдаём права awgram на /root/awg (Setting ACL for awgram on /root/awg)..."
 setfacl -m u:awgram:x /root 2>/dev/null || true
 setfacl -m u:awgram:x /root/awg 2>/dev/null || true
 setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh 2>/dev/null || true
 
 if ! sudo -u awgram ls /root/awg/manage_amneziawg.sh &>/dev/null; then
-    warn "awgram не видит файл. Пробуем ещё раз..."
+    warn "awgram не видит файл. Пробуем ещё раз... (awgram cannot see the file. Trying again...)"
     setfacl -m u:awgram:x /root 2>/dev/null || true
     setfacl -m u:awgram:x /root/awg 2>/dev/null || true
     setfacl -m u:awgram:rx /root/awg/manage_amneziawg.sh 2>/dev/null || true
 fi
 
-info "Запускаем awgram..."
+info "Запускаем awgram (Starting awgram)..."
 run systemctl start awgram
 sleep 2
 if systemctl is-active --quiet awgram; then
-    ok "awgram запущен."
+    ok "awgram запущен (awgram is running)."
 else
-    warn "awgram не запустился. Проверь: systemctl status awgram"
+    warn "awgram не запустился (awgram failed to start). Проверь (Check): systemctl status awgram"
 fi
 
 # ================= 9. CRON ДЛЯ ACL =================
-step "9. Cron для ACL"
-info "Настройка cron для автоматической выдачи прав..."
+step "9. Cron для ACL (Cron for ACL)"
+info "Настройка cron для автоматической выдачи прав (Setting up cron for automatic ACL)..."
 echo "*/1 * * * * root bash -c 'for f in /root/awg/*.conf /root/awg/*.png /root/awg/*.vpnuri; do setfacl -m u:awgram:rx \"\$f\" 2>/dev/null; done'" > /etc/cron.d/awgram-acl
 bash -c 'for f in /root/awg/*.conf /root/awg/*.png /root/awg/*.vpnuri; do setfacl -m u:awgram:rx "$f"; done' 2>/dev/null || true
-ok "Cron настроен."
+ok "Cron настроен (Cron configured)."
 
 # ================= 10. WHITEVPN =================
 step "10. WhiteVPN"
 if [ ! -d /opt/block-traffic ]; then
-    info "Установка WhiteVPN (без бота)..."
+    info "Установка WhiteVPN без бота (Installing WhiteVPN without bot)..."
     run curl -fsSL https://raw.githubusercontent.com/anten-ka/whitevpn/main/install.sh -o /tmp/whitevpn-install.sh
     bash /tmp/whitevpn-install.sh <<< "n"
-    ok "WhiteVPN установлен."
+    ok "WhiteVPN установлен (WhiteVPN installed)."
 else
-    info "WhiteVPN уже установлен."
+    info "WhiteVPN уже установлен (WhiteVPN already installed)."
 fi
 
 # Принудительный запуск whitevpn-firewall после установки
-info "Запуск whitevpn-firewall..."
+info "Запуск whitevpn-firewall (Starting whitevpn-firewall)..."
 systemctl start whitevpn-firewall 2>/dev/null || true
 systemctl status whitevpn-firewall --no-pager | head -5
 
 # ================= 11. ПРОВЕРКА =================
-step "11. Проверка"
-info "Статус AmneziaWG:"
+step "11. Проверка (Verification)"
+info "Статус AmneziaWG (AmneziaWG status):"
 systemctl status awg-quick@awg0 --no-pager | head -5
-info "Статус awgram:"
+info "Статус awgram (awgram status):"
 systemctl status awgram --no-pager | head -5
-info "Проверка NAT:"
-iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || warn "NAT не найден!"
-info "Проверка whitevpn:"
-sudo ipset list blocked_ips 2>/dev/null | grep "Number of entries" || warn "ipset blocked_ips пуст или не создан"
+info "Проверка NAT (NAT check):"
+iptables -t nat -L POSTROUTING -n -v | grep MASQUERADE || warn "NAT не найден (NAT not found)!"
+info "Проверка whitevpn (whitevpn check):"
+sudo ipset list blocked_ips 2>/dev/null | grep "Number of entries" || warn "ipset blocked_ips пуст или не создан (empty or not created)"
 
 # ================= 12. ОТКЛЮЧЕНИЕ ROOT (В САМОМ КОНЦЕ) =================
-step "12. Отключение root по SSH"
-info "Проверка, что пользователь $NEW_USER может зайти по SSH..."
+step "12. Отключение root по SSH (Disabling root via SSH)"
+info "Проверка, что пользователь $NEW_USER может зайти по SSH (Checking that $NEW_USER can log in via SSH)..."
 
 if id "$NEW_USER" &>/dev/null && [ -d "/home/$NEW_USER" ]; then
     if ss -tulpn | grep -q ":$SSH_PORT"; then
-        info "Порт $SSH_PORT слушается. Отключаем root..."
+        info "Порт $SSH_PORT слушается. Отключаем root... (Port $SSH_PORT is listening. Disabling root...)"
         sed -i "s/^#*PermitRootLogin .*/PermitRootLogin no/" /etc/ssh/sshd_config
         run systemctl restart ssh
-        ok "Root по SSH отключён."
+        ok "Root по SSH отключён (Root via SSH disabled)."
     else
-        warn "Порт $SSH_PORT не слушается. Root оставлен включённым для безопасности."
+        warn "Порт $SSH_PORT не слушается. Root оставлен включённым для безопасности. (Port $SSH_PORT is not listening. Root left enabled for safety.)"
     fi
 else
-    warn "Пользователь $NEW_USER не найден или его домашняя папка отсутствует. Root оставлен включённым."
+    warn "Пользователь $NEW_USER не найден или его домашняя папка отсутствует. Root оставлен включённым. (User $NEW_USER not found or home directory missing. Root left enabled.)"
 fi
 
 # ================= 13. ВЫВОД QR-КОДА ПЕРВОГО КЛИЕНТА =================
-step "13. Первый клиент (QR-код)"
+step "13. Первый клиент (First client, QR code)"
 # Ищем первый .conf файл в /root/awg/
 FIRST_CONF=$(ls /root/awg/*.conf 2>/dev/null | head -n 1)
 if [[ -n "$FIRST_CONF" ]]; then
     CLIENT_NAME=$(basename "$FIRST_CONF" .conf)
-    info "Найден конфиг первого клиента: $CLIENT_NAME"
-    info "Отсканируй QR-код в приложении Amnezia (на iPhone/Android):"
+    info "Найден конфиг первого клиента (Found first client config): $CLIENT_NAME"
+    info "Отсканируй QR-код в приложении Amnezia (Scan QR code in Amnezia app):"
     echo ""
     # Генерируем QR-код из .conf файла
-    qrencode -t ansiutf8 -m 1 -s 1 < "$FIRST_CONF" || warn "Не удалось сгенерировать QR-код (установлен ли qrencode?)"
+    qrencode -t ansiutf8 -m 1 -s 1 < "$FIRST_CONF" || warn "Не удалось сгенерировать QR-код (Failed to generate QR code)"
     echo ""
-    info "Файл конфига: $FIRST_CONF"
-    info "Путь на сервере: /root/awg/$CLIENT_NAME.conf"
+    info "Файл конфига (Config file): $FIRST_CONF"
+    info "Путь на сервере (Path on server): /root/awg/$CLIENT_NAME.conf"
 else
-    warn "Не найдено ни одного .conf файла в /root/awg/. Создай клиента через бота или manage_amneziawg.sh add <имя>."
+    warn "Не найдено ни одного .conf файла в /root/awg/. Создай клиента через бота или manage_amneziawg.sh add <имя> (No .conf file found. Create a client via bot or manage_amneziawg.sh add <name>)"
 fi
 
 echo -e "\n${GREEN}==================================================${NC}"
-echo -e "${GREEN}   ✅ РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!                    ${NC}"
+echo -e "${GREEN}   ✅ РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО! (DEPLOYMENT COMPLETE!) ${NC}"
 echo -e "${GREEN}==================================================${NC}"
-echo -e "Сервер готов к работе."
+echo -e "Сервер готов к работе (Server is ready)."
 echo -e ""
-echo -e "Для входа по SSH используй:"
+echo -e "Для входа по SSH используй (For SSH login use):"
 echo -e "  ${CYAN}ssh -p $SSH_PORT $NEW_USER@$(hostname -I | awk '{print $1}')${NC}"
 echo -e ""
-echo -e "Root по SSH отключён (безопасность)."
+echo -e "Root по SSH отключён (Root via SSH disabled)."
 echo -e "${GREEN}==================================================${NC}"
